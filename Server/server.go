@@ -85,9 +85,7 @@ func (S *FTPServer) Start() error {
 
 		client := &FTPClient{conn: conn, dir: "/"}
 		S.clients.Store(client.conn.RemoteAddr(), client)
-		fmt.Println(S.clients)
 		S.jobQueue <- client
-
 		fmt.Printf("Connection accepted: [%s] \n", client.conn.RemoteAddr())
 	}
 }
@@ -179,8 +177,8 @@ func (S *FTPServer) handleClientConn(c *FTPClient) error {
 			}
 		}
 
-		fmt.Println(str)
-		fmt.Println("Got above command")
+		cmd := parseCommand(str)
+		fmt.Println(cmd)
 	}
 }
 
