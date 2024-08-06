@@ -173,12 +173,12 @@ func (S *FTPServer) handleClientConn(c *FTPClient) error {
 				return err
 			} else {
 				fmt.Printf("[READ] > Error: %v \n", err)
-				continue
+				return err
 			}
 		}
 
 		cmd := parseCommand(str)
-		fmt.Println(cmd)
+		S.handleClientCommand(c, cmd)
 	}
 }
 
@@ -213,8 +213,6 @@ func (S *FTPServer) gracefullyDisconnect(C *FTPClient) {
 	fmt.Printf("[DISCONNECT] > Disconnected client: %s \n", C.conn.RemoteAddr())
 	select {
 	case S.workerDone <- struct{}{}:
-		//
-		fmt.Println(S.clients)
 		fmt.Printf("[Disconnect] > Client discconected \n")
 	default:
 		fmt.Println("Channel is full")
