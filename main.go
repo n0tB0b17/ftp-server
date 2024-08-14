@@ -15,12 +15,16 @@ func main() {
 	var port int = 3636
 	var maxWorker int = 1000
 	var minWorker int = 10
+	var maxDataPort int = 6669
+	var minDataPort int = 6420
 
 	serverInstance := Server.NewServer(
 		addr,
 		port,
 		maxWorker,
 		minWorker,
+		maxDataPort,
+		minDataPort,
 	)
 
 	err := serverInstance.Start()

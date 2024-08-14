@@ -12,11 +12,11 @@ import (
 )
 
 type FTPServer struct {
-	addr     string
-	port     int
-	listener net.Listener
-	clients  sync.Map
-
+	addr        string
+	port        int
+	listener    net.Listener
+	clients     sync.Map
+	rootDir     string
 	workerPool  chan chan *FTPClient
 	jobQueue    chan *FTPClient
 	maxWorker   int
@@ -28,6 +28,13 @@ type FTPServer struct {
 	quit        chan bool
 
 	workerDone chan struct{}
+	navMu      sync.RWMutex
+
+	dataPorts struct {
+		max int
+		min int
+	}
+	availableDataPorts chan int
 }
 
 func NewServer(
@@ -35,16 +42,65 @@ func NewServer(
 	port int,
 	maxWorker int,
 	minWorker int,
+	maxDataPort int,
+	minDataPort int,
 ) *FTPServer {
-	return &FTPServer{
+	server := &FTPServer{
 		addr:       addr,
 		port:       port,
+		rootDir:    "/home/vairav-babin/localdisk-c/tmp/ftp",
 		maxWorker:  maxWorker,
 		minWorker:  minWorker,
 		workerPool: make(chan chan *FTPClient),
 		jobQueue:   make(chan *FTPClient),
 		workerDone: make(chan struct{}, maxWorker),
+
+		dataPorts: struct {
+			max int
+			min int
+		}{
+			max: maxDataPort,
+			min: minDataPort,
+		},
+		availableDataPorts: make(chan int, maxDataPort-minDataPort+1),
 	}
+
+	for port := minDataPort; port < maxDataPort; port++ {
+		server.availableDataPorts <- port
+	}
+
+	return server
+}
+
+func (S *FTPServer) PassiveConn(c *FTPClient) error {
+	port, err := S.getAvailableDataPorts()
+	if err != nil {
+		fmt.Println("[PASSIVE] > Error while trying to access port for Passive connection >", err.Error())
+		return err
+	}
+
+	dataConnAddr := fmt.Sprintf("%s:%d", S.addr, port)
+	fmt.Println("[PASSIVE] > Passive connection address >>: ", dataConnAddr)
+	listener, err := net.Listen("tcp", dataConnAddr)
+	if err != nil {
+		fmt.Println("[PASSIVE] > Error while listening for passive connection >", err.Error())
+		S.availableDataPorts <- port
+		return err
+	}
+
+	c.dataListener = listener
+	go func() {
+		defer listener.Close()
+		conn, err := listener.Accept()
+		if err != nil {
+			fmt.Println("[PASSIVE] > Error while accpeting data connection >", err.Error())
+			return
+		}
+		c.dataConn = conn
+		fmt.Printf("[PASSIVE] > Entering passive mode for client: %s \n", c.dataConn.RemoteAddr())
+	}()
+
+	return c.sendResponse(201, fmt.Sprintf("Entering passive mode at: %s \n", dataConnAddr))
 }
 
 func (S *FTPServer) Start() error {
@@ -83,7 +139,7 @@ func (S *FTPServer) Start() error {
 			}
 		}
 
-		client := &FTPClient{conn: conn, dir: "/"}
+		client := &FTPClient{conn: conn, cwd: S.rootDir}
 		S.clients.Store(client.conn.RemoteAddr(), client)
 		S.jobQueue <- client
 		fmt.Printf("Connection accepted: [%s] \n", client.conn.RemoteAddr())
@@ -160,8 +216,8 @@ func (S *FTPServer) handleClientConn(c *FTPClient) error {
 	c.sendResponse(201, "Successfully connected to FTP server, welcome...")
 	wreader := bufio.NewReader(c.conn)
 	for {
-		c.conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
-
+		// connection timeout
+		c.conn.SetReadDeadline(time.Now().Add(30 * time.Minute))
 		str, err := wreader.ReadString('\n')
 		if err != nil {
 			if errors.Is(err, io.EOF) {
@@ -207,6 +263,18 @@ func (S *FTPServer) gracefullyDisconnect(C *FTPClient) {
 	S.mu.Lock()
 	defer S.mu.Unlock()
 
+	if C.dataListener != nil {
+		C.dataListener.Close()
+	}
+
+	if C.dataConn != nil {
+		C.dataConn.Close()
+	}
+
+	if C.dataConnPort != 0 {
+		S.availableDataPorts <- C.dataConnPort
+	}
+
 	C.conn.Close()
 	S.clients.Delete(C.conn.RemoteAddr())
 
@@ -249,5 +317,14 @@ func (S *FTPServer) ShutDown(ctx context.Context) error {
 		return ctx.Err()
 	case <-done:
 		return nil
+	}
+}
+
+func (S *FTPServer) getAvailableDataPorts() (int, error) {
+	select {
+	case port := <-S.availableDataPorts:
+		return port, nil
+	default:
+		return 0, fmt.Errorf("port not available")
 	}
 }
