@@ -2,4 +2,4 @@
 2. Command Interpret (enact) (1%) [Todo]
 3. Navigation [Todo] // need to do research on server's available file-system
 4. Audit logs [Todo] // a cache based log storage
-5. Authentication [Todo]
+5. Authentication [Todo] // after feature is implemented

@@ -88,7 +88,6 @@ func (S *FTPServer) PassiveConn(c *FTPClient) error {
 		return err
 	}
 
-	c.dataListener = listener
 	go func() {
 		defer listener.Close()
 		conn, err := listener.Accept()
@@ -96,11 +95,12 @@ func (S *FTPServer) PassiveConn(c *FTPClient) error {
 			fmt.Println("[PASSIVE] > Error while accpeting data connection >", err.Error())
 			return
 		}
+
 		c.dataConn = conn
-		fmt.Printf("[PASSIVE] > Entering passive mode for client: %s \n", c.dataConn.RemoteAddr())
+		c.passiveInput(S)
 	}()
 
-	return c.sendResponse(201, fmt.Sprintf("Entering passive mode at: %s \n", dataConnAddr))
+	return c.sendResponse(201, fmt.Sprintf("Entering passive mode at: [%s], CWD is: %s \n", dataConnAddr, c.cwd))
 }
 
 func (S *FTPServer) Start() error {
@@ -222,6 +222,7 @@ func (S *FTPServer) handleClientConn(c *FTPClient) error {
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				fmt.Printf("[READ] > Client %v closed connection \n", c.conn.RemoteAddr())
+				c.sendResponse(401, "Closing connection, thank you for using...")
 				return err
 			} else if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				fmt.Printf("[READ] > Client %v timeout, connection closing \n", c.conn.RemoteAddr())
@@ -262,10 +263,6 @@ func (S *FTPServer) dispatchClientToWorkers() {
 func (S *FTPServer) gracefullyDisconnect(C *FTPClient) {
 	S.mu.Lock()
 	defer S.mu.Unlock()
-
-	if C.dataListener != nil {
-		C.dataListener.Close()
-	}
 
 	if C.dataConn != nil {
 		C.dataConn.Close()

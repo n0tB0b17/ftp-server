@@ -46,10 +46,6 @@ func (S *FTPServer) handleClientCommand(c *FTPClient, cmd FTPCommand) error {
 		return S.PassiveConn(c)
 	case "TOUCH":
 		return S.handleTOUCH(c, cmd.argument)
-	case "DOWNLOAD":
-		return c.sendResponse(404, "In-progress")
-	case "UPLOAD":
-		return c.sendResponse(404, "In-progress...")
 	case "CWD":
 		return S.handleCWD(c)
 	case "HELP":
