@@ -236,23 +236,29 @@ func (C *FTPClient) add(cmd FTPCommand, S *FTPServer) error {
 		return C.sendResponse(404, "Please provide file to upload to FTP server")
 	}
 
-	fullPath := path.Join(C.cwd, cmd.argument)
-	fmt.Printf("Path to upload file named: %s >> path: >> %s \n", cmd.argument, fullPath)
-
+	localPath := strings.TrimSpace(cmd.argument)
+	fileName := filepath.Base(localPath)
+	fullPath := path.Join(C.cwd, fileName)
+	fmt.Printf("Uploading file: [%s] to given path: { %s }", fileName, fullPath)
 	if !strings.HasPrefix(fullPath, S.rootDir) {
 		return C.sendResponse(404, "unauthorized path")
 	}
+	C.sendResponse(201, "Ok to send file...")
 
 	file, err := os.Create(fullPath)
 	if err != nil {
-		fmt.Printf("[ADD] Error while upload file named: %s \n", cmd.argument)
-
-		return C.sendResponse(404, "unable to upload file")
+		fmt.Println("Error while creating path in server >> ", err.Error())
+		return C.sendResponse(404, "unable to create file")
 	}
-
 	defer file.Close()
 
-	return C.sendResponse(404, "File uploaded")
+	written, err := io.Copy(file, C.dataConn)
+	if err != nil {
+		fmt.Println("Error while writing client's data content to server's", err.Error())
+		return C.sendResponse(404, "unable to read")
+	}
+
+	return C.sendResponse(201, fmt.Sprintf("Total number of bytes send to server: %d \n", written))
 }
 
 func (C *FTPClient) resetDataConnection(S *FTPServer) error {
