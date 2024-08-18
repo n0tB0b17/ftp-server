@@ -3,8 +3,8 @@
 FTP server is completely based on Golang, created to learn about network programming, concurrency in Golang. 
 
 Server creates two connection.
-1. Control connection (Command exchange)
-2. Data connection (Actual data transfer)
+1. **Control connection** (for command exchange)
+2. **Data connection** (for actual data transfer)
 
 These two connection runs on different ports.
 
