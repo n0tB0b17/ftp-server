@@ -48,7 +48,7 @@ func NewServer(
 	server := &FTPServer{
 		addr:       addr,
 		port:       port,
-		rootDir:    "/home/vairav-babin/localdisk-c/tmp/ftp",
+		rootDir:    "/ftp/server/downstream/directory",
 		maxWorker:  maxWorker,
 		minWorker:  minWorker,
 		workerPool: make(chan chan *FTPClient),

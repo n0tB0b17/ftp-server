@@ -1,5 +1,5 @@
 1. Connection (90%) [Almost done]
 2. Command Interpret (enact) (1%) [Todo]
-3. Navigation [Todo] // need to do research on server's available file-system
+3. Navigation [done] 
 4. Audit logs [Todo] // a cache based log storage
 5. Authentication [Todo] // after feature is implemented
