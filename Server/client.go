@@ -20,6 +20,10 @@ type FTPClient struct {
 }
 
 func (C *FTPClient) sendResponse(statusCode int, msg string) error {
+	if C.dataConn != nil {
+		_, err := fmt.Fprintf(C.dataConn, "[Status: %d] > %s \n", statusCode, msg)
+		return err
+	}
 	_, err := fmt.Fprintf(C.conn, "[Status: %d] %s \n", statusCode, msg)
 	return err
 }
@@ -152,6 +156,81 @@ func (C *FTPClient) handlePassiveCommand(cmd FTPCommand, S *FTPServer) error {
 	}
 }
 
+func (C *FTPClient) get(cmd FTPCommand, S *FTPServer) error {
+	// implement, validate if file exist on server
+	if cmd.argument == "" {
+		return C.sendResponse(404, "Please provide valid file name to download")
+	}
+
+	fullPath := path.Join(C.cwd, cmd.argument)
+	fmt.Printf("Download file name with path: %s \n", fullPath)
+
+	if !strings.HasPrefix(fullPath, S.rootDir) {
+		return C.sendResponse(404, "unathorized path")
+	}
+
+	fileInfo, err := os.Stat(fullPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return C.sendResponse(404, "File doesn't exist")
+		}
+		C.sendResponse(201, "Invalid file name provided")
+	}
+
+	if fileInfo.IsDir() {
+		return C.sendResponse(404, "Cannot download a directory")
+	}
+
+	file, err := os.Open(fullPath)
+	if err != nil {
+		fmt.Printf("[GET] Error while reading file content at: %s \n", fullPath)
+		return C.sendResponse(404, "unable to read file's content...")
+	}
+
+	defer file.Close()
+
+	bufSize := 32 * 1024 // 32KB
+	buffer := make([]byte, bufSize)
+	writer := bufio.NewWriter(C.dataConn)
+	reader := bufio.NewReader(file)
+	byteTransferred := 0
+
+	for {
+		n, err := reader.Read(buffer)
+		if err != nil && err != io.EOF {
+			return C.sendResponse(550, "error reading file")
+		}
+
+		if n == 0 {
+			break
+		}
+
+		_, err = writer.Write(buffer[:n])
+		if err != nil {
+			fmt.Println("[GET | WRITER]", err.Error())
+			return C.sendResponse(426, "Transfer aborted...")
+		}
+
+		byteTransferred += n
+
+		if byteTransferred%(bufSize*10) == 0 {
+			err = writer.Flush()
+			if err != nil {
+				fmt.Println("[GET | WRITER | FLUSH]", err.Error())
+				return C.sendResponse(404, "Transfer aborted...")
+			}
+		}
+	}
+
+	err = writer.Flush()
+	if err != nil {
+		fmt.Println("[GET | WRITER | FLUSH]", err.Error())
+		return C.sendResponse(404, "Transfer aborted...")
+	}
+
+	return C.sendResponse(226, fmt.Sprintf("File transfer completed, total number of bytes send: [%d] \n", byteTransferred))
+}
+
 func (C *FTPClient) add(cmd FTPCommand, S *FTPServer) error {
 	if cmd.argument == "" {
 		return C.sendResponse(404, "Please provide file to upload to FTP server")
@@ -172,33 +251,8 @@ func (C *FTPClient) add(cmd FTPCommand, S *FTPServer) error {
 	}
 
 	defer file.Close()
-	C.sendResponse(404, "File uploaded")
-	return nil
-}
 
-func (C *FTPClient) get(cmd FTPCommand, S *FTPServer) error {
-	// search through current client pass with server's and validate if file exist at first
-	if cmd.argument == "" {
-		return C.sendResponse(404, "Please provide valid file name to download")
-	}
-
-	fullPath := path.Join(C.cwd, cmd.argument)
-	fmt.Printf("Download file name with path: %s \n", fullPath)
-
-	if !strings.HasPrefix(fullPath, S.rootDir) {
-		return C.sendResponse(404, "unathorized path")
-	}
-
-	file, err := os.Open(fullPath)
-	if err != nil {
-		fmt.Printf("[GET] Error while reading file content at: %s \n", fullPath)
-		return C.sendResponse(404, "unable to read file's content...")
-	}
-
-	defer file.Close()
-
-	C.sendResponse(404, "File downloaded")
-	return nil
+	return C.sendResponse(404, "File uploaded")
 }
 
 func (C *FTPClient) resetDataConnection(S *FTPServer) error {
