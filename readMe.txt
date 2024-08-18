@@ -12,7 +12,6 @@ Control connection uses concurrency to handle multiple client connection without
 
 ## Running server
 As this server do not contains any third party libraries, server can be started very easily.
-Use the package manager [pip](https://pip.pypa.io/en/stable/) to install foobar.
 
 1. Inside of project directory
 ```bash
